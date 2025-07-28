@@ -1,8 +1,8 @@
 {
   "version": 2,
- "builds": [
+  "builds": [
     {
-      "src": "api/(shorten|redirect).go", 
+      "src": "api/(shorten|redirect).go",
       "use": "@vercel/go"
     },
     {
