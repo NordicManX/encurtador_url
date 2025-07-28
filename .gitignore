@@ -1,0 +1,17 @@
+# Variáveis de ambiente
+.env
+
+# Binários Go
+*.exe
+*.bin
+url-shortener* # Ignora url-shortener.exe e url-shortener
+
+# Banco de dados local (se ainda estiver usando, ou para backups)
+shortener.db
+
+# Diretórios de módulos Go
+/vendor/ # Se você usa vendor mode
+
+# Diretórios de build/cache
+/bin/
+/pkg/

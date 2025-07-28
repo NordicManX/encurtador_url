@@ -1,216 +1,212 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
-	"html/template" // Usado para servir o arquivo HTML
+	"html/template"
 	"log"
+	"math/rand"
 	"net/http"
-	"regexp" // Para validar URLs
-	// Para conversão de string para int (usado em decodeBase62, embora não diretamente no handler)
-	"strings" // Para manipulação de strings (trimPrefix)
+	"os" // Para usar os.Getenv para ler variáveis de ambiente
+	"regexp"
+	"strings"
+	"time"
 
-	_ "github.com/mattn/go-sqlite3" // Driver do SQLite3. O '_' indica que o pacote é importado apenas pelos seus efeitos colaterais (registro do driver).
+	"github.com/joho/godotenv" // NOVO: Importar godotenv
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// URL representa a estrutura de uma URL em nosso sistema.
 type URL struct {
-	ID        int64
-	LongURL   string
-	ShortCode string
+	ShortCode string    `bson:"_id,omitempty"`
+	LongURL   string    `bson:"long_url"`
+	CreatedAt time.Time `bson:"created_at"`
 }
 
-var db *sql.DB // Variável global para a conexão com o banco de dados.
+var mongoClient *mongo.Client
+var urlsCollection *mongo.Collection
 
 const (
-	// base62Charset contém os 62 caracteres usados para codificar os IDs do banco de dados em códigos curtos.
-	base62Charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	// baseURL é a base da URL para as URLs encurtadas. Altere para o seu domínio se estiver em produção.
-	baseURL = "http://localhost:8080/"
+	baseURL = "http://localhost:8080/" // Para desenvolvimento local
 )
 
-// initDB inicializa a conexão com o banco de dados SQLite e cria a tabela 'urls' se ela não existir.
-func initDB(dataSourceName string) {
+func initMongo(mongoURI string) {
+	clientOptions := options.Client().ApplyURI(mongoURI)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var err error
-	db, err = sql.Open("sqlite3", dataSourceName) // Abre a conexão com o banco de dados.
+	mongoClient, err = mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		log.Fatalf("Erro ao abrir o banco de dados: %v", err) // Se houver erro, encerra o programa.
+		log.Fatalf("Erro ao conectar ao MongoDB: %v", err)
 	}
 
-	// SQL para criar a tabela 'urls'.
-	// id: Chave primária auto-incrementável (irá gerar o ID numérico que usamos para o shortcode).
-	// long_url: A URL original longa, deve ser única para evitar duplicatas.
-	// short_code: O código curto gerado, também deve ser único.
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS urls (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		long_url TEXT NOT NULL UNIQUE,
-		short_code TEXT UNIQUE
-	);`
-	_, err = db.Exec(createTableSQL) // Executa a query para criar a tabela.
+	err = mongoClient.Ping(ctx, nil)
 	if err != nil {
-		log.Fatalf("Erro ao criar a tabela: %v", err) // Se houver erro, encerra o programa.
+		log.Fatalf("Erro ao pingar o MongoDB: %v", err)
 	}
-	log.Println("Banco de dados SQLite inicializado e tabela 'urls' verificada.")
+	log.Println("Conectado ao MongoDB Atlas!")
+
+	urlsCollection = mongoClient.Database("url_shortener").Collection("urls")
+
+	createIndexes(ctx)
 }
 
-// encodeBase62 converte um ID numérico (gerado pelo banco de dados) para uma string Base62.
-// Isso cria códigos curtos e únicos a partir de IDs incrementais.
-func encodeBase62(id int64) string {
-	if id == 0 {
-		return string(base62Charset[0]) // Retorna '0' para o ID 0.
+func createIndexes(ctx context.Context) {
+	longURLIndexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "long_url", Value: 1}},
+		Options: options.Index().SetUnique(true),
 	}
-
-	var result []byte
-	for id > 0 {
-		remainder := id % 62                              // Obtém o resto da divisão por 62.
-		result = append(result, base62Charset[remainder]) // Adiciona o caractere correspondente.
-		id /= 62                                          // Divide o ID por 62 para a próxima iteração.
+	_, err := urlsCollection.Indexes().CreateOne(ctx, longURLIndexModel)
+	if err != nil {
+		log.Printf("Erro ao criar índice para long_url: %v", err)
+	} else {
+		log.Println("Índice para long_url criado/verificado.")
 	}
-
-	// A string é construída de trás para frente, então precisamos invertê-la.
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
-	}
-	return string(result)
 }
 
-// decodeBase62 converte uma string Base62 de volta para um ID numérico.
-// Esta função é útil para buscar a URL longa a partir do shortcode.
-func decodeBase62(shortCode string) (int64, error) {
-	var id int64 = 0
-	base := int64(len(base62Charset))
-	for _, char := range shortCode {
-		idx := strings.IndexRune(base62Charset, char) // Encontra o índice do caractere no charset.
-		if idx == -1 {
-			return 0, fmt.Errorf("caractere inválido na string Base62: %c", char)
-		}
-		id = id*base + int64(idx) // Converte o caractere para seu valor numérico e adiciona ao ID.
+func generateShortCode() string {
+	const length = 7
+	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
 	}
-	return id, nil
+	return string(b)
 }
 
-// isValidURL verifica se uma string tem o formato básico de uma URL válida.
-// Usa uma expressão regular simples. Em um ambiente de produção, seria mais robusta.
 func isValidURL(url string) bool {
 	re := regexp.MustCompile(`^(http|https)://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(/\S*)?$`)
 	return re.MatchString(url)
 }
 
-// shortenURLHandler lida com as requisições POST para encurtar uma URL.
 func shortenURLHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// longURL é extraída do formulário HTML.
 	longURL := r.FormValue("url")
 	if !isValidURL(longURL) {
 		http.Error(w, "URL inválida", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Tenta buscar a URL longa no banco de dados para ver se já foi encurtada.
-	var existingShortCode string
-	err := db.QueryRow("SELECT short_code FROM urls WHERE long_url = ?", longURL).Scan(&existingShortCode)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var existingURL URL
+	err := urlsCollection.FindOne(ctx, bson.M{"long_url": longURL}).Decode(&existingURL)
 	if err == nil {
-		// Se a URL já existe, retorna o código curto já existente.
-		fmt.Fprintf(w, "%s%s", baseURL, existingShortCode)
+		fmt.Fprintf(w, "%s%s", baseURL, existingURL.ShortCode)
 		return
-	} else if err != sql.ErrNoRows {
-		// Lida com outros erros de banco de dados.
+	} else if err != mongo.ErrNoDocuments {
 		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
-		log.Printf("Erro ao consultar URL existente: %v", err)
+		log.Printf("Erro ao consultar URL existente no MongoDB: %v", err)
 		return
 	}
 
-	// 2. Se a URL não existe, insere a URL longa no banco de dados.
-	res, err := db.Exec("INSERT INTO urls (long_url) VALUES (?)", longURL)
+	var shortCode string
+	for {
+		shortCode = generateShortCode()
+		count, err := urlsCollection.CountDocuments(ctx, bson.M{"_id": shortCode})
+		if err != nil {
+			http.Error(w, "Erro ao verificar unicidade do short code", http.StatusInternalServerError)
+			log.Printf("Erro CountDocuments: %v", err)
+			return
+		}
+		if count == 0 {
+			break
+		}
+	}
+
+	newURL := URL{
+		ShortCode: shortCode,
+		LongURL:   longURL,
+		CreatedAt: time.Now(),
+	}
+
+	_, err = urlsCollection.InsertOne(ctx, newURL)
 	if err != nil {
-		http.Error(w, "Erro ao salvar URL", http.StatusInternalServerError)
-		log.Printf("Erro ao inserir URL: %v", err)
+		http.Error(w, "Erro ao salvar URL no MongoDB", http.StatusInternalServerError)
+		log.Printf("Erro ao inserir URL no MongoDB: %v", err)
 		return
 	}
 
-	// Obtém o ID auto-incrementado da URL recém-inserida.
-	id, err := res.LastInsertId()
-	if err != nil {
-		http.Error(w, "Erro ao obter ID", http.StatusInternalServerError)
-		log.Printf("Erro ao obter LastInsertId: %v", err)
-		return
-	}
-
-	// 3. Converte o ID para Base62 para gerar o código curto.
-	shortCode := encodeBase62(id)
-
-	// 4. Atualiza o registro no banco de dados com o short_code gerado.
-	_, err = db.Exec("UPDATE urls SET short_code = ? WHERE id = ?", shortCode, id)
-	if err != nil {
-		http.Error(w, "Erro ao atualizar short code", http.StatusInternalServerError)
-		log.Printf("Erro ao atualizar short code: %v", err)
-		return
-	}
-
-	// Retorna a URL curta completa para o frontend.
 	fmt.Fprintf(w, "%s%s", baseURL, shortCode)
 }
 
-// redirectURLHandler lida com as requisições GET para redirecionar URLs curtas para as longas.
 func redirectURLHandler(w http.ResponseWriter, r *http.Request) {
-	// Extrai o código curto da URL (ex: /abc123 -> abc123).
 	shortCode := strings.TrimPrefix(r.URL.Path, "/")
 	if shortCode == "" {
-		http.NotFound(w, r) // Se não há código, retorna 404.
+		http.NotFound(w, r)
 		return
 	}
 
-	var longURL string
-	// Busca a URL longa no banco de dados usando o short_code.
-	err := db.QueryRow("SELECT long_url FROM urls WHERE short_code = ?", shortCode).Scan(&longURL)
-	if err == sql.ErrNoRows {
-		http.NotFound(w, r) // Se o código curto não for encontrado, retorna 404.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result URL
+	err := urlsCollection.FindOne(ctx, bson.M{"_id": shortCode}).Decode(&result)
+	if err == mongo.ErrNoDocuments {
+		http.NotFound(w, r)
 		return
 	} else if err != nil {
 		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
-		log.Printf("Erro ao buscar long_url: %v", err)
+		log.Printf("Erro ao buscar long_url no MongoDB: %v", err)
 		return
 	}
 
-	// Redireciona o navegador para a URL longa.
-	http.Redirect(w, r, longURL, http.StatusMovedPermanently) // Status 301 para redirecionamento permanente.
+	http.Redirect(w, r, result.LongURL, http.StatusMovedPermanently)
 }
 
 func main() {
-	// Inicializa o banco de dados. O arquivo será criado ou aberto em 'shortener.db' no mesmo diretório do executável.
-	initDB("./shortener.db")
-	defer db.Close() // Garante que a conexão com o banco de dados seja fechada ao final da execução.
+	// Carrega as variáveis de ambiente do arquivo .env
+	// O Load() busca o .env no diretório atual ou nos pais.
+	// O Load(".env") é o mais comum.
+	err := godotenv.Load(".env")
+	if err != nil {
+		// Não encerra se o .env não for encontrado; isso permite que funcione em produção
+		// onde as variáveis de ambiente são definidas diretamente no ambiente do servidor.
+		log.Println("Aviso: Arquivo .env não encontrado ou erro ao carregar:", err)
+		log.Println("Tentando ler variáveis de ambiente do sistema.")
+	}
 
-	// Handler para servir arquivos estáticos (HTML, CSS, JS) da pasta 'static'.
-	// http.StripPrefix remove "/static/" da URL para que http.FileServer encontre os arquivos corretamente.
+	// Obtém a string de conexão do MongoDB Atlas da variável de ambiente MONGODB_URI
+	mongoURI := os.Getenv("MONGODB_URI")
+	if mongoURI == "" {
+		log.Fatal("ERRO: Variável de ambiente MONGODB_URI não definida. Por favor, defina-a no arquivo .env ou no ambiente do sistema.")
+	}
+
+	initMongo(mongoURI)
+	defer func() {
+		if err := mongoClient.Disconnect(context.Background()); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// Handler para a URL raiz ("/"). Serve o index.html.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
-			// Se a URL não for a raiz, tenta tratar como um shortcode para redirecionamento.
 			redirectURLHandler(w, r)
 			return
 		}
-		// Carrega o template HTML e o executa para servir a página.
 		tmpl, err := template.ParseFiles("./static/index.html")
 		if err != nil {
 			log.Printf("Erro ao carregar template: %v", err)
 			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 			return
 		}
-		tmpl.Execute(w, nil) // Executa o template, enviando a página HTML para o navegador.
+		tmpl.Execute(w, nil)
 	})
 
-	// Handler para o endpoint de encurtar URLs (recebe POST do formulário).
 	http.HandleFunc("/shorten", shortenURLHandler)
 
 	log.Println("Servidor iniciado na porta :8080")
-	// Inicia o servidor HTTP na porta 8080. log.Fatal fará o programa sair se houver um erro.
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
