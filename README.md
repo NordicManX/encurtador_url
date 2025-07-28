@@ -79,7 +79,7 @@ Para executar este projeto em sua máquina local, siga os passos abaixo.
 
 ## 👤 Autor
 
-Feito com ❤️ por **NordicManX**.
+Criado por **NordicManX**.
 
 [![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NordicManX)
 
