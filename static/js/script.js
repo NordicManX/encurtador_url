@@ -15,15 +15,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Faz uma requisição POST assíncrona para o endpoint '/shorten' do nosso servidor Go
-            const response = await fetch('http://localhost:8080/shorten', {
-                method: 'POST', // Método HTTP POST
+            // ...
+            const response = await fetch('/api/shorten', { // <-- MUDANÇA AQUI!
+                method: 'POST',
                 headers: {
-                    // Define o tipo de conteúdo do corpo da requisição
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                // Corpo da requisição: a URL codificada para ser enviada como dado de formulário
                 body: `url=${encodeURIComponent(longUrl)}`,
             });
+            // ...
 
             // Verifica se a requisição foi bem-sucedida (status 2xx)
             if (!response.ok) {

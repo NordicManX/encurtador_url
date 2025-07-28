@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/*.go",
+      "use": "@vercel/go"
+    },
+    {
+      "src": "static/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/shorten",
+      "dest": "/api/shorten.go",
+      "methods": ["POST"]
+    },
+    {
+      "src": "/api/(?<shortCode>[a-zA-Z0-9]{7})",
+      "dest": "/api/redirect.go"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/static/$1"
+    }
+  ]
+}
