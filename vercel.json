@@ -2,7 +2,11 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/*.go",
+      "src": "api/shorten.go",
+      "use": "@vercel/go"
+    },
+    {
+      "src": "api/redirect.go",
       "use": "@vercel/go"
     },
     {
