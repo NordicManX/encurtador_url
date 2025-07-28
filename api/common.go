@@ -14,7 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// URL defines the structure for a shortened URL document in MongoDB.
 type URL struct {
 	ShortCode string    `bson:"_id,omitempty"`
 	LongURL   string    `bson:"long_url"`
@@ -24,10 +23,8 @@ type URL struct {
 var mongoClient *mongo.Client
 var urlsCollection *mongo.Collection
 
-// once ensures the database connection is established only once.
 var once sync.Once
 
-// EnsureDBConnection establishes a thread-safe connection to MongoDB.
 func EnsureDBConnection(mongoURI string) {
 	once.Do(func() {
 		if mongoURI == "" {
@@ -56,7 +53,6 @@ func EnsureDBConnection(mongoURI string) {
 	})
 }
 
-// createIndexes creates necessary indexes for the 'urls' collection.
 func createIndexes(ctx context.Context) {
 	longURLIndexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "long_url", Value: 1}},
@@ -64,7 +60,6 @@ func createIndexes(ctx context.Context) {
 	}
 	_, err := urlsCollection.Indexes().CreateOne(ctx, longURLIndexModel)
 	if err != nil {
-		// Don't fail if the index already exists.
 		if !strings.Contains(err.Error(), "already exists") {
 			log.Printf("Warning: Could not create index for long_url: %v", err)
 		}
@@ -73,7 +68,6 @@ func createIndexes(ctx context.Context) {
 	}
 }
 
-// generateShortCode creates a random 7-character string.
 func generateShortCode() string {
 	const length = 7
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -85,9 +79,7 @@ func generateShortCode() string {
 	return string(b)
 }
 
-// isValidURL checks if a string is a valid URL.
 func isValidURL(url string) bool {
-	// A simple regex to validate a URL.
 	re := regexp.MustCompile(`^(http|https)://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(/\S*)?$`)
 	return re.MatchString(url)
 }

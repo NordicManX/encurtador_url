@@ -7,15 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyButton = document.getElementById('copyButton');
     const copySuccessAlert = document.getElementById('copySuccessAlert');
 
-    // Adiciona um "listener" para o evento de submit do formulário de encurtar URL
     shortenForm.addEventListener('submit', async (e) => {
-        e.preventDefault(); // Impede o comportamento padrão do formulário (recarregar a página)
+        e.preventDefault(); 
 
-        const longUrl = longUrlInput.value; // Pega o valor da URL longa digitada pelo usuário
-
+        const longUrl = longUrlInput.value; 
         try {
-            // Faz uma requisição POST assíncrona para o endpoint '/shorten' do nosso servidor Go
-            // ...
+            
             const response = await fetch('/api/shorten', { // <-- MUDANÇA AQUI!
                 method: 'POST',
                 headers: {
@@ -23,39 +20,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: `url=${encodeURIComponent(longUrl)}`,
             });
-            // ...
-
-            // Verifica se a requisição foi bem-sucedida (status 2xx)
+           
             if (!response.ok) {
-                const errorMessage = await response.text(); // Pega a mensagem de erro do servidor
-                alert(`Erro ao encurtar URL: ${errorMessage}`); // Mostra um alerta com o erro
-                resultContainer.style.display = 'none'; // Esconde o container de resultados
-                return; // Sai da função
+                const errorMessage = await response.text();
+                alert(`Erro ao encurtar URL: ${errorMessage}`);
+                resultContainer.style.display = 'none';
+                return;
             }
 
-            // Se a requisição foi bem-sucedida, pega a URL encurtada da resposta
             const shortUrl = await response.text();
-            shortUrlInput.value = shortUrl; // Define o valor do campo de URL encurtada
-            resultContainer.style.display = 'block'; // Torna o container de resultados visível
-            copySuccessAlert.classList.add('d-none'); // Esconde o alerta de cópia, caso esteja visível
-            shortUrlInput.select(); // Seleciona o texto no campo da URL encurtada (útil para o usuário copiar)
+            shortUrlInput.value = shortUrl;
+            resultContainer.style.display = 'block';
+            copySuccessAlert.classList.add('d-none');
+            shortUrlInput.select();
         } catch (error) {
-            // Captura e trata erros que podem ocorrer durante a requisição
             console.error('Erro na requisição:', error);
             alert('Ocorreu um erro ao tentar encurtar a URL. Tente novamente.');
-            resultContainer.style.display = 'none'; // Esconde o container de resultados em caso de erro
+            resultContainer.style.display = 'none';
         }
     });
 
-    // Adiciona um "listener" para o evento de clique do botão de copiar
     copyButton.addEventListener('click', () => {
-        shortUrlInput.select(); // Seleciona o texto no campo da URL encurtada
-        // Para dispositivos móveis, garante que todo o texto seja selecionado
+        shortUrlInput.select();
         shortUrlInput.setSelectionRange(0, 99999);
-        document.execCommand('copy'); // Executa o comando de copiar para a área de transferência
+        document.execCommand('copy');
 
-        copySuccessAlert.classList.remove('d-none'); // Mostra o alerta de sucesso da cópia
-        // Esconde o alerta de sucesso após 2 segundos
+        copySuccessAlert.classList.remove('d-none');
         setTimeout(() => {
             copySuccessAlert.classList.add('d-none');
         }, 2000);

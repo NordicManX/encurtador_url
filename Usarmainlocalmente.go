@@ -165,18 +165,14 @@ func redirectURLHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Carrega as variáveis de ambiente do arquivo .env
-	// O Load() busca o .env no diretório atual ou nos pais.
-	// O Load(".env") é o mais comum.
+
 	err := godotenv.Load(".env")
 	if err != nil {
-		// Não encerra se o .env não for encontrado; isso permite que funcione em produção
-		// onde as variáveis de ambiente são definidas diretamente no ambiente do servidor.
+
 		log.Println("Aviso: Arquivo .env não encontrado ou erro ao carregar:", err)
 		log.Println("Tentando ler variáveis de ambiente do sistema.")
 	}
 
-	// Obtém a string de conexão do MongoDB Atlas da variável de ambiente MONGODB_URI
 	mongoURI := os.Getenv("MONGODB_URI")
 	if mongoURI == "" {
 		log.Fatal("ERRO: Variável de ambiente MONGODB_URI não definida. Por favor, defina-a no arquivo .env ou no ambiente do sistema.")
