@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -21,27 +22,32 @@ type URL struct {
 
 var mongoClient *mongo.Client
 var urlsCollection *mongo.Collection
+var once sync.Once // Garante que a conexão seja estabelecida apenas uma vez
 
-// ConnectDB agora é uma função pública (com C maiúsculo) para ser chamada uma vez.
-func ConnectDB(mongoURI string) {
-	clientOptions := options.Client().ApplyURI(mongoURI)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// EnsureDBConnection garante que a conexão com o DB esteja ativa.
+// Usa sync.Once para ser "thread-safe" e eficiente.
+func EnsureDBConnection(mongoURI string) {
+	once.Do(func() {
+		log.Println("Iniciando conexão com o MongoDB...")
+		clientOptions := options.Client().ApplyURI(mongoURI)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	var err error
-	mongoClient, err = mongo.Connect(ctx, clientOptions)
-	if err != nil {
-		log.Fatalf("Erro ao conectar ao MongoDB: %v", err)
-	}
+		var err error
+		mongoClient, err = mongo.Connect(ctx, clientOptions)
+		if err != nil {
+			log.Fatalf("Erro ao conectar ao MongoDB: %v", err)
+		}
 
-	err = mongoClient.Ping(ctx, nil)
-	if err != nil {
-		log.Fatalf("Erro ao pingar o MongoDB: %v", err)
-	}
-	log.Println("Conectado ao MongoDB Atlas!")
+		err = mongoClient.Ping(ctx, nil)
+		if err != nil {
+			log.Fatalf("Erro ao pingar o MongoDB: %v", err)
+		}
+		log.Println("Conectado ao MongoDB Atlas!")
 
-	urlsCollection = mongoClient.Database("url_shortener").Collection("urls")
-	createIndexes(ctx)
+		urlsCollection = mongoClient.Database("url_shortener").Collection("urls")
+		createIndexes(ctx)
+	})
 }
 
 func createIndexes(ctx context.Context) {

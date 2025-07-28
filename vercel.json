@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/(shorten|redirect).go",
+      "src": "api/*.go",
       "use": "@vercel/go"
     },
     {
@@ -17,7 +17,7 @@
       "methods": ["POST"]
     },
     {
-      "src": "/api/(?<shortCode>[a-zA-Z0-9]{7})",
+      "src": "/(?<shortCode>[a-zA-Z0-9]{7})",
       "dest": "/api/redirect.go"
     },
     {
