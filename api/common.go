@@ -1,4 +1,4 @@
-package handler // Mantenha o pacote handler
+package handler
 
 import (
 	"context"
@@ -13,19 +13,17 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Definição da estrutura URL
 type URL struct {
 	ShortCode string    `bson:"_id,omitempty"`
 	LongURL   string    `bson:"long_url"`
 	CreatedAt time.Time `bson:"created_at"`
 }
 
-// Variáveis globais para a conexão MongoDB
 var mongoClient *mongo.Client
 var urlsCollection *mongo.Collection
 
-// initMongo é agora uma função comum para inicializar o DB
-func initMongo(mongoURI string) {
+// ConnectDB agora é uma função pública (com C maiúsculo) para ser chamada uma vez.
+func ConnectDB(mongoURI string) {
 	clientOptions := options.Client().ApplyURI(mongoURI)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -46,7 +44,6 @@ func initMongo(mongoURI string) {
 	createIndexes(ctx)
 }
 
-// createIndexes é uma função comum para criar índices
 func createIndexes(ctx context.Context) {
 	longURLIndexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "long_url", Value: 1}},
@@ -63,7 +60,6 @@ func createIndexes(ctx context.Context) {
 	}
 }
 
-// generateShortCode é uma função comum para gerar shortcodes
 func generateShortCode() string {
 	const length = 7
 	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -75,7 +71,6 @@ func generateShortCode() string {
 	return string(b)
 }
 
-// isValidURL é uma função comum para validar URLs
 func isValidURL(url string) bool {
 	re := regexp.MustCompile(`^(http|https)://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(/\S*)?$`)
 	return re.MatchString(url)
