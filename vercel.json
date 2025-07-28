@@ -22,7 +22,7 @@
     },
     {
       "src": "/(?<shortCode>[a-zA-Z0-9]{7})",
-      "dest": "/api/redirect.go"
+      "dest": "/api/redirect.go?shortCode=$shortCode"
     },
     {
       "src": "/(.*)",
