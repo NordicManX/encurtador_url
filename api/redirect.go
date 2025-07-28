@@ -9,26 +9,28 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo" // Importe mongo aqui para initMongo
 )
 
-// NO LONGER NEEDED: type URL struct { ... }
-// NO LONGER NEEDED: var mongoClient *mongo.Client
-// NO LONGER NEEDED: var urlsCollection *mongo.Collection
+// AS SEGUINTES DEFINIÇÕES FORAM REMOVIDAS POIS AGORA ESTÃO EM api/common.go:
+// - type URL struct { ... }
+// - var mongoClient *mongo.Client
+// - var urlsCollection *mongo.Collection
+
+// O init() permanece aqui, mas agora chama ConnectDB do common.go
+func init() {
+	log.Println("Initializing MongoDB connection (redirect.go init)..")
+	mongoURI := os.Getenv("MONGODB_URI") // Lê do ambiente da Vercel
+	if mongoURI == "" {
+		log.Fatal("ERRO: MONGODB_URI não definida no ambiente da Vercel.")
+	}
+	ConnectDB(mongoURI) // Chama a função de common.go
+}
 
 // Handler é a função de entrada para a função serverless da Vercel
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// Inicializa a conexão com o banco de dados se ainda não estiver inicializada
-	if mongoClient == nil { // Verifica se o cliente já foi inicializado
-		log.Println("Initializing MongoDB connection (redirect.go Handler)..")
-		mongoURI := os.Getenv("MONGODB_URI")
-		if mongoURI == "" {
-			http.Error(w, "Erro interno do servidor: MONGODB_URI não definida.", http.StatusInternalServerError)
-			log.Fatal("ERRO FATAL: MONGODB_URI não definida no ambiente da Vercel.")
-			return
-		}
-		ConnectDB(mongoURI) // Chama a função de common.go
-	}
+	// Não precisamos mais verificar mongoClient == nil aqui,
+	// pois o init() deve ter garantido a conexão na cold start.
 
 	shortCode := r.URL.Query().Get("shortCode")
 
